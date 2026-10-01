@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
 import { buildTypeOrmOptions } from './database/typeorm.config';
+import { EmployeesModule } from './employees/employees.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { UsersModule } from './users/users.module';
       useFactory: buildTypeOrmOptions,
     }),
     UsersModule,
+    EmployeesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
