@@ -53,7 +53,10 @@ export class Lead {
     scale: 2,
     default: 0,
     // Postgres returns numeric as string; convert to a JS number for the API.
-    transformer: { to: (v?: number) => v, from: (v: string | null) => (v === null ? v : parseFloat(v)) },
+    transformer: {
+      to: (v?: number) => v,
+      from: (v: string | null) => (v === null ? v : parseFloat(v)),
+    },
   })
   estimatedValue!: number;
 

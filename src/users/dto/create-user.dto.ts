@@ -11,7 +11,9 @@ export class CreateUserDto {
   @IsString()
   @MinLength(8)
   @MaxLength(72) // bcrypt only uses the first 72 bytes
-  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/, { message: 'password must contain at least one letter and one number' })
+  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/, {
+    message: 'password must contain at least one letter and one number',
+  })
   password!: string;
 
   @ApiProperty({ enum: Role, example: Role.SALES })
