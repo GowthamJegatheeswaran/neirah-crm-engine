@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { buildTypeOrmOptions } from './database/typeorm.config';
 import { EmployeesModule } from './employees/employees.module';
+import { HealthModule } from './health/health.module';
 import { LeadsModule } from './leads/leads.module';
 import { UsersModule } from './users/users.module';
 
@@ -22,8 +21,7 @@ import { UsersModule } from './users/users.module';
     EmployeesModule,
     LeadsModule,
     AuthModule,
+    HealthModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}
