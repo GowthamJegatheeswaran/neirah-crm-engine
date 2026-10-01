@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
 import { buildTypeOrmOptions } from './database/typeorm.config';
 import { EmployeesModule } from './employees/employees.module';
+import { LeadsModule } from './leads/leads.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     EmployeesModule,
+    LeadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
