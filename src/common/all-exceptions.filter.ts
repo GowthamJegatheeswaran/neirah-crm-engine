@@ -62,10 +62,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     response.status(status).json({
       statusCode: status,
-      error: HttpStatus[status] ?? 'Error',
+      error: this.statusName(status),
       message,
       path: request.url,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  /** HttpStatus.BAD_REQUEST -> 'Bad Request' */
+  private statusName(status: number): string {
+    const key = HttpStatus[status];
+    if (!key) return 'Error';
+    return key
+      .split('_')
+      .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+      .join(' ');
   }
 }
