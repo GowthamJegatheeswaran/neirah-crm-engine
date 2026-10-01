@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -19,6 +20,9 @@ async function bootstrap() {
       transform: true, // converts payloads into DTO class instances / numbers
     }),
   );
+
+  // Consistent error format + logging for every kind of error
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // API documentation (Swagger UI) at /api/docs
   const swaggerConfig = new DocumentBuilder()
