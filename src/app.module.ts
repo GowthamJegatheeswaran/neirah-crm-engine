@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
 import { buildTypeOrmOptions } from './database/typeorm.config';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { buildTypeOrmOptions } from './database/typeorm.config';
       inject: [ConfigService],
       useFactory: buildTypeOrmOptions,
     }),
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
