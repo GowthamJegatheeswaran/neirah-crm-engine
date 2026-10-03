@@ -10,7 +10,7 @@ SLA checks and escalation. Built as a 5-day internship task for Neirah Tech Solu
 | Day | Scope | Status |
 |-----|-------|--------|
 | 1 | Project foundation, DB schema + migration, JWT auth, RBAC, seed data | Done |
-| 2 | Lead & employee CRUD, search/filter/pagination, notes, activity timeline | Planned |
+| 2 | Lead & employee CRUD, search/filter/pagination, notes, activity timeline | Done |
 | 3 | Configurable assignment rules and smart auto-assignment, assignment history | Planned |
 | 4 | Follow-ups, overdue/SLA scheduler, escalation, dashboard stats | Planned |
 | 5 | Edge-case tests, API docs, Docker for the API, final demo | Planned |
@@ -89,6 +89,36 @@ The seed refuses to run when `NODE_ENV=production`.
 | `GET /health` | Public | API + database status |
 
 Use the token as `Authorization: Bearer <token>`. In Swagger UI click **Authorize** and paste the token.
+
+## Day 2 API
+
+| Method & path | Access | Description |
+|---------------|--------|-------------|
+| `POST /leads` | Admin, Manager | Create a lead (starts as `new`, logs `lead_created`) |
+| `GET /leads` | All (sales: own leads only) | Search, filter, sort, paginate |
+| `GET /leads/:id` | All (sales: own leads only) | One lead |
+| `PATCH /leads/:id` | All (sales: own leads only) | Edit details and/or move status |
+| `POST /leads/:id/notes` | All (sales: own leads only) | Add a note to the timeline |
+| `GET /leads/:id/activities` | All (sales: own leads only) | Timeline, oldest first, paginated |
+| `POST /employees` | Admin, Manager | Create employee profile (optionally linked to a sales user) |
+| `GET /employees` | Admin, Manager | Filter by search/territory/specialization/availability; sort incl. open leads |
+| `GET /employees/:id`, `PATCH /employees/:id` | Admin, Manager | Read / update a profile |
+| `GET /employees/me`, `PATCH /employees/me/availability` | Sales | Own profile / own availability |
+
+**Lead list query params:** `page`, `limit` (max 100), `search`, `status`, `priority`, `source`, `service`,
+`location`, `assignedEmployeeId`, `unassigned`, `minValue`, `maxValue`, `createdFrom`, `createdTo`,
+`sortBy` (`createdAt|updatedAt|estimatedValue|name|status|priority`), `order` (`asc|desc`).
+
+**Status lifecycle:** `new -> assigned -> contacted -> qualified -> follow_up -> converted | lost`.
+`new` and `assigned` are set by the system (Day 3), never manually. `converted` and `lost` are final.
+Invalid moves return `409`.
+
+**Design decisions**
+- Every change (create, edit, status change, note) writes a row to `lead_activities` in the **same transaction**
+  as the change, so the timeline can never disagree with the data. Rows are only ever inserted.
+- A sales user asking for someone else's lead gets `404`, not `403`, so lead ids cannot be probed.
+- Sort fields are a whitelist mapped to SQL by the server; search text has `%` and `_` escaped.
+- Leads are not deleted through the API: history and audit must stay intact. Use status `lost` instead.
 
 ## Security design
 
