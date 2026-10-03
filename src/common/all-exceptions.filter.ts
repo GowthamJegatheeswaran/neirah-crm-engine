@@ -13,6 +13,9 @@ import { QueryFailedError } from 'typeorm';
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
 const PG_CHECK_VIOLATION = '23514';
+const PG_NUMERIC_OUT_OF_RANGE = '22003';
+const PG_INVALID_TEXT_REPRESENTATION = '22P02';
+const PG_NOT_NULL_VIOLATION = '23502';
 
 /**
  * One place that turns ANY error into a consistent JSON response and logs it.
@@ -48,6 +51,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else if (code === PG_CHECK_VIOLATION) {
         status = HttpStatus.BAD_REQUEST;
         message = 'A value violates a database rule';
+      } else if (
+        code === PG_NUMERIC_OUT_OF_RANGE ||
+        code === PG_INVALID_TEXT_REPRESENTATION ||
+        code === PG_NOT_NULL_VIOLATION
+      ) {
+        status = HttpStatus.BAD_REQUEST;
+        message = 'A value is missing, malformed or out of range';
       }
     }
 
