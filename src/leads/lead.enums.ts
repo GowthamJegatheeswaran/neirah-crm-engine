@@ -31,6 +31,7 @@ export enum ActivityType {
   ASSIGNED = 'assigned',
   REASSIGNED = 'reassigned',
   UNASSIGNED = 'unassigned',
+  ASSIGNMENT_FAILED = 'assignment_failed',
   FOLLOW_UP_CREATED = 'follow_up_created',
   FOLLOW_UP_COMPLETED = 'follow_up_completed',
   FOLLOW_UP_OVERDUE = 'follow_up_overdue',
