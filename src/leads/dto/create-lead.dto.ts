@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsNumber,
@@ -71,4 +72,12 @@ export class CreateLeadDto {
   @IsOptional()
   @IsEnum(LeadPriority)
   priority?: LeadPriority;
+
+  @ApiPropertyOptional({
+    default: true,
+    description: 'Run the assignment rules right after creating the lead',
+  })
+  @IsOptional()
+  @IsBoolean()
+  autoAssign?: boolean;
 }

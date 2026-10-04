@@ -271,7 +271,7 @@ export class AssignmentEngineService {
     const params: unknown[] = rule.requireSpecialization
       ? [lead.location, lead.service]
       : [lead.location];
-    const rows = await manager.query(
+    const rows = await manager.query<Candidate[]>(
       `SELECT e.id,
               e.full_name AS "fullName",
               e.territory,
@@ -289,15 +289,15 @@ export class AssignmentEngineService {
           ${specializationFilter}`,
       params,
     );
-    return rows as Candidate[];
+    return rows;
   }
 
   private async countOpenLeads(manager: EntityManager, employeeId: number): Promise<number> {
-    const rows = await manager.query(
+    const rows = await manager.query<{ n: number }[]>(
       `SELECT COUNT(*)::int AS n FROM leads l WHERE l.assigned_employee_id = $1 AND l.status IN (${OPEN_STATUS_SQL})`,
       [employeeId],
     );
-    return rows[0].n as number;
+    return rows[0].n;
   }
 
   private toOutcome(

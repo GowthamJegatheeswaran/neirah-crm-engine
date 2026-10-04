@@ -1,11 +1,14 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, SelectQueryBuilder } from 'typeorm';
 import { Role } from '../users/role.enum';
 import type { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { buildPage, offsetFor } from '../common/pagination/paginated';
 import { escapeLike } from '../common/utils/escape-like';
+import { AssignmentEngineService } from '../assignment/assignment-engine.service';
+import { AssignmentHistoryService } from '../assignment/assignment-history.service';
 import { EmployeesService } from '../employees/employees.service';
+import { PaginationQueryDto } from '../common/pagination/pagination-query.dto';
 import { AddNoteDto } from './dto/add-note.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { LeadFilterDto, LeadSortBy } from './dto/lead-filter.dto';
@@ -31,10 +34,14 @@ const SORT_EXPRESSIONS: Record<LeadSortBy, string> = {
 
 @Injectable()
 export class LeadsService {
+  private readonly logger = new Logger(LeadsService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly activities: LeadActivitiesService,
     private readonly employees: EmployeesService,
+    private readonly engine: AssignmentEngineService,
+    private readonly assignmentHistory: AssignmentHistoryService,
   ) {}
 
   async create(dto: CreateLeadDto, user: AuthenticatedUser) {
@@ -61,7 +68,8 @@ export class LeadsService {
       });
       return lead.id;
     });
-    return this.findOne(id, user);
+    const assignment = dto.autoAssign === false ? null : await this.tryAutoAssign(id, user);
+    return { ...(await this.findOne(id, user)), assignment };
   }
 
   async findAll(filter: LeadFilterDto, user: AuthenticatedUser) {
@@ -172,6 +180,24 @@ export class LeadsService {
       description: dto.note,
       performedByUserId: user.id,
     });
+  }
+
+  async history(id: number, query: PaginationQueryDto, user: AuthenticatedUser) {
+    await this.getAccessible(id, user);
+    return this.assignmentHistory.listForLead(id, query);
+  }
+
+  /** The lead is already saved at this point, so an engine failure must not undo the creation. */
+  private async tryAutoAssign(id: number, user: AuthenticatedUser) {
+    try {
+      return await this.engine.autoAssign(id, { userId: user.id });
+    } catch (err) {
+      this.logger.error(
+        `Auto-assignment failed for lead ${id}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return null;
+    }
   }
 
   async timeline(id: number, query: TimelineQueryDto, user: AuthenticatedUser) {
