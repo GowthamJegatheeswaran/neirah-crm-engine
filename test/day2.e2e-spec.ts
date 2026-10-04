@@ -29,6 +29,7 @@ describe('Day 2: leads and employees (e2e)', () => {
     name: `${marker} Lead`,
     service: 'Enterprise',
     location: 'Colombo',
+    autoAssign: false, // Day 2 tests control ownership themselves; Day 3 tests cover auto-assignment
     ...extra,
   });
   const makeLead = async (extra: Record<string, unknown> = {}) => {
