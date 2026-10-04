@@ -18,6 +18,9 @@ export const OPEN_LEAD_STATUSES: readonly LeadStatus[] = Object.values(S).filter
   (s) => !TERMINAL_STATUSES.includes(s),
 );
 
+/** Ready-made SQL list, e.g. `l.status IN (${OPEN_STATUS_SQL})`. Built from constants, never from user input. */
+export const OPEN_STATUS_SQL = OPEN_LEAD_STATUSES.map((s) => `'${s}'`).join(',');
+
 // NEW and ASSIGNED are set only by the system (creation / assignment engine), never by a manual edit.
 const SYSTEM_ONLY_TARGETS: readonly LeadStatus[] = [S.NEW, S.ASSIGNED];
 

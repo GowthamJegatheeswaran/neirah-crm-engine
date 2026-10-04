@@ -1,16 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmployeesModule } from '../employees/employees.module';
-import { LeadActivitiesService } from './lead-activities.service';
-import { LeadActivity } from './lead-activity.entity';
+import { LeadActivitiesModule } from './lead-activities.module';
 import { Lead } from './lead.entity';
 import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Lead, LeadActivity]), EmployeesModule],
+  imports: [TypeOrmModule.forFeature([Lead]), EmployeesModule, LeadActivitiesModule],
   controllers: [LeadsController],
-  providers: [LeadsService, LeadActivitiesService],
-  exports: [TypeOrmModule, LeadActivitiesService, LeadsService],
+  providers: [LeadsService],
+  exports: [TypeOrmModule, LeadsService, LeadActivitiesModule],
 })
 export class LeadsModule {}

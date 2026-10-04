@@ -9,7 +9,7 @@ import { Repository } from 'typeorm';
 import { buildPage, offsetFor } from '../common/pagination/paginated';
 import { omitUndefined } from '../common/utils/omit-undefined';
 import { escapeLike } from '../common/utils/escape-like';
-import { OPEN_LEAD_STATUSES } from '../leads/lead-status.rules';
+import { OPEN_STATUS_SQL } from '../leads/lead-status.rules';
 import { Role } from '../users/role.enum';
 import { User } from '../users/user.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -163,7 +163,7 @@ export class EmployeesService {
         'u.email AS user_email',
       ])
       .addSelect(
-        `(SELECT COUNT(*) FROM leads l WHERE l.assigned_employee_id = e.id AND l.status IN (${OPEN_LEAD_STATUSES.map((s) => `'${s}'`).join(',')}))`,
+        `(SELECT COUNT(*) FROM leads l WHERE l.assigned_employee_id = e.id AND l.status IN (${OPEN_STATUS_SQL}))`,
         'openLeads',
       );
   }
