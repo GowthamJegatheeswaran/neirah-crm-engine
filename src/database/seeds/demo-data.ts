@@ -10,6 +10,7 @@
  */
 import { EmployeeAvailability } from '../../employees/employee-availability.enum';
 import { LeadPriority, LeadSource } from '../../leads/lead.enums';
+import { AssignmentStrategy, TerritoryMode } from '../../assignment/assignment.enums';
 import { Role } from '../../users/role.enum';
 
 export const DEMO_STAFF_USERS = [
@@ -125,5 +126,41 @@ export const DEMO_LEADS = [
     location: 'Galle',
     estimatedValue: 900000,
     priority: LeadPriority.HIGH,
+  },
+];
+
+/** Demo assignment rules. Evaluated by ascending priority; first active matching rule wins. */
+export const DEMO_RULES = [
+  {
+    name: 'High value: territory required',
+    description: 'Leads worth 100000 or more go only to a specialist in the same territory.',
+    priority: 10,
+    isActive: true,
+    minValue: 100000,
+    requireSpecialization: true,
+    territoryMode: TerritoryMode.REQUIRED,
+    respectWorkloadLimit: true,
+    strategy: AssignmentStrategy.LEAST_WORKLOAD,
+  },
+  {
+    name: 'Round robin (disabled demo)',
+    description: 'Inactive example: switch on to share SMB leads evenly.',
+    priority: 50,
+    isActive: false,
+    matchService: 'SMB',
+    requireSpecialization: true,
+    territoryMode: TerritoryMode.PREFERRED,
+    respectWorkloadLimit: true,
+    strategy: AssignmentStrategy.ROUND_ROBIN,
+  },
+  {
+    name: 'Default: specialization + preferred territory',
+    description: 'Catch-all rule for every other lead.',
+    priority: 100,
+    isActive: true,
+    requireSpecialization: true,
+    territoryMode: TerritoryMode.PREFERRED,
+    respectWorkloadLimit: true,
+    strategy: AssignmentStrategy.LEAST_WORKLOAD,
   },
 ];
