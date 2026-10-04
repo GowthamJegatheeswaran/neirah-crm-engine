@@ -11,7 +11,7 @@ SLA checks and escalation. Built as a 5-day internship task for Neirah Tech Solu
 |-----|-------|--------|
 | 1 | Project foundation, DB schema + migration, JWT auth, RBAC, seed data | Done |
 | 2 | Lead & employee CRUD, search/filter/pagination, notes, activity timeline | Done |
-| 3 | Configurable assignment rules and smart auto-assignment, assignment history | Planned |
+| 3 | Configurable assignment rules and smart auto-assignment, assignment history | Done |
 | 4 | Follow-ups, overdue/SLA scheduler, escalation, dashboard stats | Planned |
 | 5 | Edge-case tests, API docs, Docker for the API, final demo | Planned |
 
@@ -27,8 +27,8 @@ npm install
 cp .env.example .env          # then edit .env and set your own DB password + JWT secret
 
 docker compose up -d db       # start PostgreSQL 16
-npm run migration:run         # create the tables
-npm run seed                  # load DEMO data (users, employees, leads)
+npm run migration:run         # create / update the tables
+npm run seed                  # load DEMO data (users, employees, leads, assignment rules)
 
 npm run start:dev             # API on http://localhost:3000
 ```
@@ -110,7 +110,7 @@ Use the token as `Authorization: Bearer <token>`. In Swagger UI click **Authoriz
 `sortBy` (`createdAt|updatedAt|estimatedValue|name|status|priority`), `order` (`asc|desc`).
 
 **Status lifecycle:** `new -> assigned -> contacted -> qualified -> follow_up -> converted | lost`.
-`new` and `assigned` are set by the system (Day 3), never manually. `converted` and `lost` are final.
+`new` and `assigned` are set by the system (the assignment engine), never manually. `converted` and `lost` are final.
 Invalid moves return `409`.
 
 **Design decisions**
@@ -119,6 +119,46 @@ Invalid moves return `409`.
 - A sales user asking for someone else's lead gets `404`, not `403`, so lead ids cannot be probed.
 - Sort fields are a whitelist mapped to SQL by the server; search text has `%` and `_` escaped.
 - Leads are not deleted through the API: history and audit must stay intact. Use status `lost` instead.
+
+## Day 3 API: smart assignment
+
+| Method & path | Access | Description |
+|---------------|--------|-------------|
+| `POST /assignment-rules` | Admin | Create a rule |
+| `PATCH /assignment-rules/:id` | Admin | Edit / activate / deactivate a rule (`null` clears an optional condition) |
+| `GET /assignment-rules`, `GET /assignment-rules/:id` | Admin, Manager | List (filter `isActive`) / read |
+| `POST /leads/:id/assign` | Admin, Manager | Run the engine for a `new` lead |
+| `GET /leads/:id/assignment-preview` | Admin, Manager | Dry run: who would get it and why. Writes nothing |
+| `POST /leads/:id/reassign` | Admin, Manager | Manual override: `{ employeeId, reason }` |
+| `GET /leads/:id/assignment-history` | All (sales: own leads only) | Every assignment decision, oldest first |
+
+`POST /leads` also auto-assigns the new lead (set `"autoAssign": false` to skip). If the engine fails, the
+lead is still created and the response carries the assignment outcome.
+
+**How a lead is assigned**
+1. Rules are checked in order of `priority` (lowest number first, then id). The first **active** rule whose
+   conditions match wins. A condition left empty means "any": `matchService`, `matchLocation`, `matchSource`,
+   `matchPriority`, `minValue`/`maxValue`.
+2. **Hard filters** (always applied, in SQL): employee active, availability `available`, linked user active,
+   and (if the rule says so) the lead's service is in the employee's specializations.
+3. **Rule policy:** skip employees already at `max_workload` (`respectWorkloadLimit`); territory is
+   `required` (must match location), `preferred` (matching territory is ranked first) or `ignore`.
+4. **Ranking is deterministic**, no randomness:
+   - `least_workload`: fewest open leads, then least recently assigned, then lowest id.
+   - `round_robin`: least recently assigned, then lowest id.
+5. The result is saved with the reason, e.g. `Rule 'X': Priya chosen by lowest workload (2/10 open leads) among 3 eligible`.
+   If nobody qualifies the lead stays `new`, a `no_eligible` history row and an `assignment_failed` activity are written.
+
+**Design decisions**
+- Rules live in the `assignment_rules` table, so behaviour changes without a deploy. Rules are deactivated, not deleted.
+- Matching and ranking are **pure functions** (`assignment-selection.ts`) with unit tests; the engine only does I/O.
+- "Least recently assigned" uses the history row id, not timestamps, so ties never depend on clock precision.
+- Concurrency: a transaction-scoped advisory lock serialises assignment decisions and the lead row is locked
+  with `FOR UPDATE`, so two requests cannot over-fill an employee or assign the same lead twice.
+- `assignment_history` is append-only and keeps `rule_name` as a snapshot, so history survives rule edits.
+- A manual reassign is allowed even if the chosen employee is on leave or full, but the override is recorded
+  in the history metadata as `overrideWarnings`.
+- Assignment history and the lead activity row are written in the same transaction as the owner change.
 
 ## Security design
 
@@ -132,7 +172,7 @@ Invalid moves return `409`.
 - One exception filter returns consistent JSON errors and never leaks stack traces or SQL.
 - Secrets come only from environment variables; `.env` is git-ignored.
 
-## Database schema (Day 1)
+## Database schema (Day 1 + Day 3)
 
 ```mermaid
 erDiagram
@@ -140,6 +180,9 @@ erDiagram
     employees ||--o{ leads : "owns (assigned_employee_id)"
     leads ||--o{ lead_activities : "timeline"
     users ||--o{ lead_activities : "performed_by (null = system)"
+    leads ||--o{ assignment_history : "decisions"
+    assignment_rules ||--o{ assignment_history : "applied rule"
+    employees ||--o{ assignment_history : "from / to"
 
     users {
         int id PK
@@ -180,6 +223,35 @@ erDiagram
         jsonb metadata
         int performed_by_user_id FK
     }
+    assignment_rules {
+        int id PK
+        string name UK
+        int priority "1..10000, lower first"
+        bool is_active
+        string match_service "null = any"
+        string match_location
+        enum match_source
+        enum match_priority
+        numeric min_value
+        numeric max_value
+        bool require_specialization
+        enum territory_mode "required | preferred | ignore"
+        bool respect_workload_limit
+        enum strategy "least_workload | round_robin"
+    }
+    assignment_history {
+        int id PK
+        int lead_id FK
+        enum action "assigned | reassigned | no_eligible"
+        enum mode "automatic | manual"
+        int from_employee_id FK
+        int to_employee_id FK
+        int rule_id FK
+        string rule_name "snapshot"
+        text reason
+        jsonb metadata
+        int performed_by_user_id FK "null = system"
+    }
 ```
 
 Design notes:
@@ -187,7 +259,8 @@ Design notes:
 - Employee **workload is not stored**; it will be counted from open assigned leads, so it can never go stale.
 - `lead_activities` is an append-only timeline/audit log.
 - Indexes on the columns used by filtering and assignment (`status`, `assigned_employee_id`, `service + location`, ...).
-- Assignment rules, assignment history and follow-ups are added in later migrations (Day 3 and Day 4).
+- `assignment_rules` and `assignment_history` arrived with the Day 3 migration; follow-ups come on Day 4.
+- Existing databases: run `npm run migration:run` after pulling Day 3.
 
 ## Project structure
 
@@ -196,7 +269,8 @@ src/
   auth/        login, JWT strategy, guards (JwtAuthGuard, RolesGuard), decorators
   users/       User entity, UsersService (bcrypt), admin endpoints
   employees/   Employee entity (assignment inputs)
-  leads/       Lead + LeadActivity entities and enums
+  leads/       Lead + LeadActivity entities, status rules, lead endpoints
+  assignment/  rules API, selection logic (pure), engine, history
   health/      /health endpoint
   common/      shared pieces (global exception filter)
   config/      environment validation
