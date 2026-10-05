@@ -13,7 +13,7 @@ SLA checks and escalation. Built as a 5-day internship task for Neirah Tech Solu
 | 2 | Lead & employee CRUD, search/filter/pagination, notes, activity timeline | Done |
 | 3 | Configurable assignment rules and smart auto-assignment, assignment history | Done |
 | 4 | Follow-ups, overdue/SLA processing, escalation + reassignment, audit trail, dashboard | Done |
-| 5 | Edge-case tests, API docs, Docker for the API, final demo | Planned |
+| 5 | Edge-case and security tests, polished API docs, Docker for the API, demo script, final docs | Done |
 
 ## Quick start
 
@@ -33,8 +33,20 @@ npm run seed                  # load DEMO data (users, employees, leads, assignm
 npm run start:dev             # API on http://localhost:3000
 ```
 
-- Swagger UI (API docs): http://localhost:3000/api/docs
+- Swagger UI (API docs): http://localhost:3000/api/docs  (exported copy: `docs/openapi.json`)
 - Health check: http://localhost:3000/health
+
+### Or run everything in Docker (database + API)
+
+```bash
+cp .env.example .env          # set your own DB password + JWT secret
+docker compose up -d --build  # PostgreSQL + API; the API applies migrations itself on start
+npm install && npm run seed   # optional: load DEMO data (the seed script runs from your machine)
+```
+
+The API container reaches the database as host `db` (set in `docker-compose.yml`); `npm run seed` runs on
+your machine, so it uses `DB_HOST=localhost` from your `.env`. Stop with `docker compose down`
+(add `-v` to also delete the database volume).
 
 > Do not have Docker? Any PostgreSQL 14+ works. Create the user/database that match your `.env`.
 
@@ -79,6 +91,8 @@ The seed refuses to run when `NODE_ENV=production`.
 | `npm test` | Unit tests |
 | `npm run test:e2e` | End-to-end tests (needs DB + migrations + seed) |
 | `npm run lint` | ESLint |
+| `npm run docs:export` | Regenerate `docs/openapi.json` from the code |
+| `npm run demo` | Narrated end-to-end demo against the running API (see "Demo" below) |
 
 ## Day 1 API
 
@@ -238,6 +252,78 @@ curl -s http://localhost:3000/leads/7/activities           -H "Authorization: Be
 - Lock order is always: assignment lock, then lead row, then follow-up row, so concurrent requests cannot deadlock.
 - Follow-up reassignment/cancellation and the activity rows are written in the same transaction as the change.
 - Known limit: the processor loads all candidate leads in one query. Fine for this scale; add batching for very large datasets.
+
+## Day 5: robustness, docs and delivery
+
+- **Tests:** 62 unit + 137 end-to-end. `test/day5.e2e-spec.ts` covers token abuse (forged, expired, wrong-secret,
+  deactivated user), secrets never leaking, injection-style input, malformed bodies and ids, pagination limits,
+  a role matrix over the admin/manager endpoints, per-lead visibility for sales, and the OpenAPI document.
+- **API docs:** Swagger at `/api/docs`, grouped by feature. Every operation lists its error responses
+  (400/401/403/404 with the shared `ErrorResponse` schema), and `@Roles` documents who may call it.
+  `docs/openapi.json` is an exported copy (regenerate with `npm run docs:export`).
+- **Request logging:** one line per request (`METHOD path status ms user`). Query strings, bodies, headers
+  and tokens are never logged.
+- **Docker:** multi-stage `Dockerfile` (runs as non-root, production dependencies only), `docker-entrypoint.sh`
+  applies migrations then starts the API, and `docker-compose.yml` has `db` and `api` services with health checks.
+
+### Spec checklist -> where it is tested
+
+| Requirement | Test file |
+|-------------|-----------|
+| Full flow: create lead, assign, contact, convert | `day2`, `day3`, `day4` e2e |
+| Several eligible employees, different workloads | `day3` e2e, demo step 2 |
+| No match for specialization / territory | `day3` e2e, demo step 4 |
+| Inactive / unavailable employees excluded | `day3` e2e, demo step 5 |
+| Equal workload tie-break | `day3` e2e + unit tests, demo step 3 |
+| Manual reassignment, history preserved | `day3` e2e, demo step 6 |
+| Overdue follow-up, no-action SLA | `day4` e2e, demo steps 7-8 |
+| Repeated scheduler runs, no duplicates | `day4` e2e, demo step 9 |
+| Invalid payloads, unauthorized access, missing resources | `day2`-`day5` e2e |
+| Search / filter / pagination, dashboard statistics | `day2`, `day4`, `day5` e2e, demo steps 10-11 |
+
+## Demo
+
+With the API running and the demo data seeded:
+
+```bash
+npm run demo                   # narrated run; removes its own data at the end
+KEEP_DEMO_DATA=1 npm run demo  # keep the data to click around in Swagger afterwards
+```
+
+It walks through: login and roles, assignment by workload, tie-break, no-match, inactive exclusion, manual
+reassignment with history, overdue follow-ups, SLA escalation, repeated scheduler runs (no duplicates),
+search/filter/pagination, and the dashboard. Time travel (making a lead 3 hours old) is the only thing done with SQL.
+
+Suggested video outline (5-8 min): 1) `docker compose up -d --build` and open Swagger; 2) run `npm run demo` and
+explain each step; 3) show one decision in Swagger (`/leads/{id}/assignment-history`); 4) show the ER diagram and
+architecture diagram in this README; 5) run `npm test` and `npm run test:e2e`.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Client[Client / Swagger UI] -->|HTTP + JWT| Guards
+  subgraph API[NestJS API]
+    Guards[Global guards: JwtAuthGuard + RolesGuard] --> Ctl[Controllers + validation pipe]
+    Ctl --> Svc[Services: business rules]
+    Svc --> Engine[Assignment engine: rules, filters, workload, tie-break]
+    Svc --> Sla[SLA processor + scheduler]
+    Sla --> Engine
+    Svc --> Repo[TypeORM repositories / raw SQL for stats]
+    Filter[Exception filter] -.-> Ctl
+    Log[Request logging interceptor] -.-> Ctl
+  end
+  Repo --> PG[(PostgreSQL 16)]
+  Engine -. advisory lock .-> PG
+  Sla -. advisory lock + unique escalation key .-> PG
+```
+
+**Request path:** guard (who are you? may you?) -> validation (is the input legal?) -> service (business rules, one
+transaction per change) -> database. Errors from any step go through one filter and return one JSON shape.
+
+**Why it is safe to run repeatedly / concurrently:** the engine and the SLA run each take a PostgreSQL advisory lock,
+rows are locked in a fixed order (assignment lock, lead, follow-up), and `lead_escalations` has a UNIQUE key per
+breach, so two scheduler ticks or two API instances can never escalate the same breach twice.
 
 ## Security design
 
@@ -399,10 +485,13 @@ src/
   sla/         SLA policies, pure evaluation, processor, scheduler, escalations
   dashboard/   overview, per-employee and personal statistics (raw SQL)
   health/      /health endpoint
-  common/      shared pieces (global exception filter)
+  common/      shared pieces (exception filter, request logging, Swagger setup, pagination)
   config/      environment validation
   database/    TypeORM options, CLI data source, migrations/, seeds/ (demo data)
-test/          end-to-end tests
+test/          end-to-end tests (day2 ... day5)
+scripts/       export-openapi.ts, demo.ts
+docs/          openapi.json (exported API description)
+Dockerfile, docker-compose.yml, docker-entrypoint.sh
 ```
 
 Layering rule used throughout: **controller** (HTTP only) -> **service** (business logic) -> **repository/entity** (data access).
