@@ -1,0 +1,121 @@
+erDiagram
+    users ||--o| employees : "has profile"
+    employees ||--o{ leads : "owns (assigned_employee_id)"
+    leads ||--o{ lead_activities : "timeline"
+    users ||--o{ lead_activities : "performed_by (null = system)"
+    leads ||--o{ assignment_history : "decisions"
+    assignment_rules ||--o{ assignment_history : "applied rule"
+    employees ||--o{ assignment_history : "from / to"
+    leads ||--o{ follow_ups : "scheduled"
+    employees ||--o{ follow_ups : "responsible"
+    leads ||--o{ lead_escalations : "SLA breaches"
+    sla_policies ||--o{ lead_escalations : "applied policy"
+
+    users {
+        int id PK
+        string email UK
+        string password_hash
+        enum role "admin | manager | sales"
+        bool is_active
+    }
+    employees {
+        int id PK
+        int user_id FK "unique, nullable"
+        string full_name
+        text_array specializations
+        string territory
+        enum availability "available | busy | on_leave | unavailable"
+        bool is_active
+        int max_workload
+    }
+    leads {
+        int id PK
+        string name
+        string email
+        string phone
+        string company
+        enum source
+        string service
+        string location
+        numeric estimated_value
+        enum priority
+        enum status "new to converted/lost"
+        int assigned_employee_id FK
+    }
+    lead_activities {
+        int id PK
+        int lead_id FK
+        enum type
+        text description
+        jsonb metadata
+        int performed_by_user_id FK
+    }
+    assignment_rules {
+        int id PK
+        string name UK
+        int priority "1..10000, lower first"
+        bool is_active
+        string match_service "null = any"
+        string match_location
+        enum match_source
+        enum match_priority
+        numeric min_value
+        numeric max_value
+        bool require_specialization
+        enum territory_mode "required | preferred | ignore"
+        bool respect_workload_limit
+        enum strategy "least_workload | round_robin"
+    }
+    assignment_history {
+        int id PK
+        int lead_id FK
+        enum action "assigned | reassigned | no_eligible"
+        enum mode "automatic | manual"
+        int from_employee_id FK
+        int to_employee_id FK
+        int rule_id FK
+        string rule_name "snapshot"
+        text reason
+        jsonb metadata
+        int performed_by_user_id FK "null = system"
+    }
+    follow_ups {
+        int id PK
+        int lead_id FK
+        int employee_id FK "follows the lead"
+        enum type "call | meeting | email | other"
+        string title
+        timestamptz due_at
+        enum status "pending | overdue | completed | cancelled"
+        timestamptz overdue_at
+        timestamptz completed_at
+        timestamptz cancelled_at
+        text outcome_note
+    }
+    sla_policies {
+        int id PK
+        string name UK
+        int priority "1..10000, lower first"
+        bool is_active
+        enum match_priority "null = any"
+        string match_service
+        enum match_source
+        numeric min_value
+        numeric max_value
+        int response_minutes
+        enum action "flag | reassign"
+    }
+    lead_escalations {
+        int id PK
+        int lead_id FK
+        int policy_id FK
+        string policy_name "snapshot"
+        enum action "what the policy asked"
+        enum outcome "flagged | reassigned | no_eligible"
+        int from_employee_id FK
+        int to_employee_id FK
+        text reason
+        enum reference_type "assignment | activity"
+        int reference_id "UNIQUE with lead_id + reference_type"
+        timestamptz reference_at "when the SLA clock started"
+    }
