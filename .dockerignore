@@ -6,5 +6,4 @@ dist
 !.env.example
 test
 coverage
-docs
 *.md
