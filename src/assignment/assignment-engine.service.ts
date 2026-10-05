@@ -35,6 +35,13 @@ export interface Actor {
   userId: number | null;
 }
 
+export interface EscalationReassignment {
+  reassigned: boolean;
+  employee: { id: number; fullName: string } | null;
+  fromEmployeeId: number | null;
+  reason: string;
+}
+
 interface Evaluation {
   rule: AssignmentRule | null;
   selection: SelectionResult | null;
@@ -214,6 +221,79 @@ export class AssignmentEngineService {
     });
   }
 
+  /**
+   * SLA escalation: moves an ALREADY assigned lead to a different eligible employee, using the same
+   * rules as normal assignment but never picking the current owner. Written as history action
+   * 'reassigned', mode 'automatic', performed by the system (user = null).
+   *
+   * The caller must already hold the assignment lock AND the lead row lock, and runs this inside
+   * its own transaction (that is why it takes a manager). Returns reassigned=false, changing
+   * nothing, when nobody else is eligible.
+   */
+  async reassignForEscalation(
+    manager: EntityManager,
+    leadId: number,
+    policyName: string,
+  ): Promise<EscalationReassignment> {
+    const lead = await this.loadLead(manager, leadId);
+    const fromId = lead.assignedEmployeeId;
+    if (fromId === null || TERMINAL_STATUSES.includes(lead.status)) {
+      return {
+        reassigned: false,
+        employee: null,
+        fromEmployeeId: fromId,
+        reason: 'Lead is not open and assigned',
+      };
+    }
+    const evaluation = await this.evaluate(manager, lead, fromId);
+    const chosen = evaluation.selection?.chosen ?? null;
+    if (!chosen) {
+      return {
+        reassigned: false,
+        employee: null,
+        fromEmployeeId: fromId,
+        reason: `No other eligible employee. ${evaluation.reason}`,
+      };
+    }
+
+    const from = await manager.getRepository(Employee).findOne({ where: { id: fromId } });
+    await manager.getRepository(Lead).update(lead.id, { assignedEmployeeId: chosen.id });
+    const reason = `SLA escalation (${policyName}): ${evaluation.reason}`;
+    const outcome = this.toOutcome(lead.id, evaluation, AssignmentMode.AUTOMATIC, false);
+    const history = await this.writeHistory(manager, {
+      leadId: lead.id,
+      action: AssignmentAction.REASSIGNED,
+      mode: AssignmentMode.AUTOMATIC,
+      fromEmployeeId: fromId,
+      toEmployeeId: chosen.id,
+      rule: evaluation.rule,
+      reason,
+      metadata: { ...this.metadataOf(outcome), slaEscalation: true },
+      userId: null,
+    });
+    await this.activities.record(manager, {
+      leadId: lead.id,
+      type: ActivityType.REASSIGNED,
+      description: `Reassigned from ${from?.fullName ?? `employee ${fromId}`} to ${chosen.fullName}. ${reason}`,
+      metadata: {
+        fromEmployeeId: fromId,
+        toEmployeeId: chosen.id,
+        ruleId: evaluation.rule?.id ?? null,
+        historyId: history.id,
+        slaEscalation: true,
+      },
+      performedByUserId: null,
+    });
+    await this.followUps.transferOpenForLead(manager, lead.id, chosen.id, null);
+    this.logger.log(`Lead ${lead.id} reassigned to employee ${chosen.id} by SLA escalation`);
+    return {
+      reassigned: true,
+      employee: { id: chosen.id, fullName: chosen.fullName },
+      fromEmployeeId: fromId,
+      reason,
+    };
+  }
+
   // ---------------------------------------------------------------------------------------------
 
   /**
@@ -221,7 +301,7 @@ export class AssignmentEngineService {
    * read "Priya has 9/10 leads" and both give her a lead. The lock is released automatically
    * when the transaction ends.
    */
-  private async lockForAssignment(manager: EntityManager) {
+  async lockForAssignment(manager: EntityManager) {
     await manager.query('SELECT pg_advisory_xact_lock($1)', [ASSIGNMENT_LOCK_KEY]);
   }
 
@@ -242,7 +322,11 @@ export class AssignmentEngineService {
     }
   }
 
-  private async evaluate(manager: EntityManager, lead: Lead): Promise<Evaluation> {
+  private async evaluate(
+    manager: EntityManager,
+    lead: Lead,
+    excludeEmployeeId?: number,
+  ): Promise<Evaluation> {
     const rules = await manager.getRepository(AssignmentRule).find({
       where: { isActive: true },
       order: { priority: 'ASC', id: 'ASC' },
@@ -254,7 +338,10 @@ export class AssignmentEngineService {
     if (!rule) {
       return { rule: null, selection: null, reason: 'No active assignment rule matches this lead' };
     }
-    const candidates = await this.loadCandidates(manager, rule, lead);
+    const loaded = await this.loadCandidates(manager, rule, lead);
+    // For an SLA escalation the current owner must not be chosen again.
+    const candidates =
+      excludeEmployeeId === undefined ? loaded : loaded.filter((c) => c.id !== excludeEmployeeId);
     const selection = selectEmployee(candidates, rule);
     return { rule, selection, reason: selection.reason };
   }
