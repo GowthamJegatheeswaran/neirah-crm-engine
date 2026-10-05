@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { buildTypeOrmOptions } from './database/typeorm.config';
 import { AssignmentModule } from './assignment/assignment.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { EmployeesModule } from './employees/employees.module';
 import { FollowUpsModule } from './follow-ups/follow-ups.module';
 import { HealthModule } from './health/health.module';
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     FollowUpsModule,
     LeadsModule,
     SlaModule,
+    DashboardModule,
     AuthModule,
     HealthModule,
   ],
