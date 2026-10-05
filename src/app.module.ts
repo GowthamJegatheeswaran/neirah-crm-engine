@@ -9,6 +9,7 @@ import { EmployeesModule } from './employees/employees.module';
 import { FollowUpsModule } from './follow-ups/follow-ups.module';
 import { HealthModule } from './health/health.module';
 import { LeadsModule } from './leads/leads.module';
+import { SlaModule } from './sla/sla.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module';
     AssignmentModule,
     FollowUpsModule,
     LeadsModule,
+    SlaModule,
     AuthModule,
     HealthModule,
   ],
