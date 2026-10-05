@@ -6,8 +6,7 @@ so you can always see who got a lead, why, and what happened next.
 
 Built for the Neirah Tech Solution internship task with NestJS 11, TypeScript, PostgreSQL 16, TypeORM, Docker and Jest.
 
-The full write-up is in [`docs/Neirah_CRM_Documentation.pdf`](docs/Neirah_CRM_Documentation.pdf)
-(also as [.docx](docs/Neirah_CRM_Documentation.docx)). This README only covers how to run the project.
+This README explains how to run the project. The two diagrams are in the `diagrams` folder.
 
 ## What it does
 
@@ -96,17 +95,16 @@ The seed includes one employee on leave, one inactive employee, and a lead nobod
 | `npm run lint` | ESLint |
 | `npm run demo` | Narrated check of the whole flow against the running API |
 | `npm run time-travel -- lead\|followup <id> <minutes>` | Demo helper: make a lead or follow-up older to show overdue and SLA cases |
-| `npm run docs:export` | Regenerate `docs/openapi.json` |
 
-## Documentation
+## Diagrams
 
-| File | Content |
-|------|---------|
-| `docs/Neirah_CRM_Documentation.pdf` / `.docx` | Design, rules, SLA logic, API summary, tests, setup |
-| `docs/openapi.json` | OpenAPI description (the same as Swagger) |
-| `docs/postman_collection.json` | Postman collection; log in, then set the `token` variable |
-| `docs/architecture.png`, `docs/er-diagram.png` | Architecture and ER diagrams |
-| `docs/DEMO_SCRIPT.md` | Step-by-step script with the exact requests used in the demo video |
+Architecture: how a request moves through the API to the database.
+
+![Architecture](diagrams/architecture.png)
+
+ER diagram: the 9 tables, their columns and how they connect.
+
+![ER diagram](diagrams/er-diagram.png)
 
 ## How the code is organised
 
@@ -125,7 +123,8 @@ src/
   config/       environment validation
   database/     migrations and demo seed
 test/           end-to-end tests
-scripts/        demo, time-travel and OpenAPI export
+scripts/        demo and time-travel helpers
+diagrams/       architecture and ER diagram
 ```
 
 Each request goes controller, then service, then database. The matching and ranking logic for assignment
