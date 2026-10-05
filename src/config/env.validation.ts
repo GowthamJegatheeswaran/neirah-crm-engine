@@ -53,6 +53,17 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   JWT_EXPIRES_IN: string = '1h';
+
+  /** 'true' / 'false'. Kept as text on purpose: Boolean('false') would be true. */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  SCHEDULER_ENABLED: string = 'true';
+
+  /** How often the SLA processor runs. */
+  @IsInt()
+  @Min(5)
+  @Max(86400)
+  SLA_CHECK_INTERVAL_SECONDS: number = 60;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
