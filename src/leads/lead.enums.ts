@@ -35,6 +35,9 @@ export enum ActivityType {
   FOLLOW_UP_CREATED = 'follow_up_created',
   FOLLOW_UP_COMPLETED = 'follow_up_completed',
   FOLLOW_UP_OVERDUE = 'follow_up_overdue',
+  FOLLOW_UP_CANCELLED = 'follow_up_cancelled',
+  FOLLOW_UP_RESCHEDULED = 'follow_up_rescheduled',
+  FOLLOW_UP_REASSIGNED = 'follow_up_reassigned',
   SLA_BREACHED = 'sla_breached',
   ESCALATED = 'escalated',
 }
