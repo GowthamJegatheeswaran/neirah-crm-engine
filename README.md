@@ -33,7 +33,7 @@ npm run seed                  # load DEMO data (users, employees, leads, assignm
 npm run start:dev             # API on http://localhost:3000
 ```
 
-- Swagger UI (API docs): http://localhost:3000/api/docs  (exported copy: `docs/openapi.json`)
+- Swagger UI (API docs): http://localhost:3000/api/docs  (exported copy: `docs/openapi.json`, Postman collection: `docs/postman_collection.json`)
 - Health check: http://localhost:3000/health
 
 ### Or run everything in Docker (database + API)
@@ -93,6 +93,7 @@ The seed refuses to run when `NODE_ENV=production`.
 | `npm run lint` | ESLint |
 | `npm run docs:export` | Regenerate `docs/openapi.json` from the code |
 | `npm run demo` | Narrated end-to-end demo against the running API (see "Demo" below) |
+| `npm run time-travel -- lead\|followup <id> <minutes>` | Demo helper: age a lead or follow-up to show overdue/SLA cases without waiting |
 
 ## Day 1 API
 
@@ -260,7 +261,7 @@ curl -s http://localhost:3000/leads/7/activities           -H "Authorization: Be
   a role matrix over the admin/manager endpoints, per-lead visibility for sales, and the OpenAPI document.
 - **API docs:** Swagger at `/api/docs`, grouped by feature. Every operation lists its error responses
   (400/401/403/404 with the shared `ErrorResponse` schema), and `@Roles` documents who may call it.
-  `docs/openapi.json` is an exported copy (regenerate with `npm run docs:export`).
+  `docs/openapi.json` is an exported copy (regenerate with `npm run docs:export`) and `docs/postman_collection.json` can be imported into Postman (set the `token` variable after `POST /auth/login`).
 - **Request logging:** one line per request (`METHOD path status ms user`). Query strings, bodies, headers
   and tokens are never logged.
 - **Docker:** multi-stage `Dockerfile` (runs as non-root, production dependencies only), `docker-entrypoint.sh`
@@ -294,7 +295,9 @@ It walks through: login and roles, assignment by workload, tie-break, no-match, 
 reassignment with history, overdue follow-ups, SLA escalation, repeated scheduler runs (no duplicates),
 search/filter/pagination, and the dashboard. Time travel (making a lead 3 hours old) is the only thing done with SQL.
 
-Suggested video outline (5-8 min): 1) `docker compose up -d --build` and open Swagger; 2) run `npm run demo` and
+Step-by-step video script with the exact requests: [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
+
+Short outline (5-8 min): 1) `docker compose up -d --build` and open Swagger; 2) run `npm run demo` and
 explain each step; 3) show one decision in Swagger (`/leads/{id}/assignment-history`); 4) show the ER diagram and
 architecture diagram in this README; 5) run `npm test` and `npm run test:e2e`.
 
