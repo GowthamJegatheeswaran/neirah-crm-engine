@@ -1,4 +1,5 @@
-# Starts only the PostgreSQL database for local development.
+# `docker compose up -d db`  -> only PostgreSQL (local development)
+# `docker compose up -d --build` -> PostgreSQL + the API (migrations run on start)
 # Credentials are read from your .env file (never hard-coded here).
 services:
   db:
@@ -18,6 +19,28 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  api:
+    build: .
+    container_name: neirah-crm-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DB_HOST: db # service name, not localhost
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      SLA_CHECK_INTERVAL_SECONDS: ${SLA_CHECK_INTERVAL_SECONDS:-60}
+    ports:
+      - '${PORT:-3000}:3000'
 
 volumes:
   crm_pgdata:
