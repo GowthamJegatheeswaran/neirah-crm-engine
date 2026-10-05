@@ -24,7 +24,8 @@
     "migration:revert": "npm run typeorm -- migration:revert",
     "migration:show": "npm run typeorm -- migration:show",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
-    "docs:export": "ts-node -r tsconfig-paths/register scripts/export-openapi.ts"
+    "docs:export": "ts-node -r tsconfig-paths/register scripts/export-openapi.ts",
+    "demo": "ts-node -r tsconfig-paths/register scripts/demo.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
