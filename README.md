@@ -12,7 +12,7 @@ SLA checks and escalation. Built as a 5-day internship task for Neirah Tech Solu
 | 1 | Project foundation, DB schema + migration, JWT auth, RBAC, seed data | Done |
 | 2 | Lead & employee CRUD, search/filter/pagination, notes, activity timeline | Done |
 | 3 | Configurable assignment rules and smart auto-assignment, assignment history | Done |
-| 4 | Follow-ups, overdue/SLA scheduler, escalation, dashboard stats | Planned |
+| 4 | Follow-ups, overdue/SLA processing, escalation + reassignment, audit trail, dashboard | Done |
 | 5 | Edge-case tests, API docs, Docker for the API, final demo | Planned |
 
 ## Quick start
@@ -49,6 +49,8 @@ refuses to boot if something required is missing.
 | `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME` | PostgreSQL connection (also used by docker-compose) |
 | `JWT_SECRET` | Secret used to sign tokens (use a long random string) |
 | `JWT_EXPIRES_IN` | Token lifetime, e.g. `1h` |
+| `SCHEDULER_ENABLED` | `true` (default) = the app runs the SLA processor by itself. Always off when `NODE_ENV=test` |
+| `SLA_CHECK_INTERVAL_SECONDS` | How often the scheduler runs (default 60, min 5) |
 | `SEED_DEFAULT_PASSWORD` | Password given to the DEMO seed users only |
 
 ## Demo accounts (created by `npm run seed`)
@@ -160,6 +162,83 @@ lead is still created and the response carries the assignment outcome.
   in the history metadata as `overrideWarnings`.
 - Assignment history and the lead activity row are written in the same transaction as the owner change.
 
+## Day 4 API: follow-ups, SLA and escalation, dashboard
+
+**Follow-ups**
+
+| Method & path | Access | Description |
+|---------------|--------|-------------|
+| `POST /leads/:id/follow-ups` | All (sales: own leads only) | `{ title, dueAt, type?, notes?, employeeId? }`. `dueAt` must be in the future (422). Owner defaults to the lead owner |
+| `GET /leads/:id/follow-ups` | All (sales: own leads only) | Follow-ups of one lead |
+| `GET /follow-ups` | All (sales: own follow-ups only) | Filters: `status`, `type`, `employeeId`, `leadId`, `overdue`, `dueFrom`, `dueTo`; paginated, soonest first |
+| `GET /follow-ups/:id`, `PATCH /follow-ups/:id` | All (scoped) | Read / edit / reschedule (only while `pending` or `overdue`) |
+| `POST /follow-ups/:id/complete`, `POST /follow-ups/:id/cancel` | All (scoped) | `{ note? }`. Final: a second call is `409` |
+
+Follow-up states: `pending -> overdue -> completed | cancelled` (`pending` can also go straight to completed/cancelled).
+Every response has `isOverdue`: true for any open follow-up past its due time, even before the processor ran.
+- Follow-ups **move with the lead**: any reassignment (manual or SLA) transfers the open ones to the new owner.
+- When a lead is **converted or lost**, its open follow-ups are cancelled automatically.
+
+**SLA policies, processor and escalations**
+
+| Method & path | Access | Description |
+|---------------|--------|-------------|
+| `POST /sla-policies`, `PATCH /sla-policies/:id` | Admin | Create / edit / deactivate a policy |
+| `GET /sla-policies`, `GET /sla-policies/:id` | Admin, Manager | List (filter `isActive`) / read |
+| `POST /sla/run?dryRun=true` | Admin, Manager | Run the processor now (the scheduler runs the same code). `dryRun` only reports |
+| `GET /escalations` | Admin, Manager | Filters: `leadId`, `employeeId`, `policyId`, `outcome`, `from`, `to`; newest first |
+| `GET /leads/:id/escalations` | All (sales: own leads only) | Escalation history of one lead |
+
+**How the SLA works**
+1. A policy says: leads matching these conditions (`matchPriority`, `matchService`, `matchSource`, `minValue`/`maxValue`;
+   empty = any) must get a response within `responseMinutes`, otherwise do `action`: `flag` or `reassign`.
+   Like assignment rules: lowest `priority` number first, first active match wins.
+2. **The SLA clock** starts at the latest of: the last assignment, or the last *response* on the lead
+   (status change, note, follow-up created or completed). A lead with a pending, not-yet-due follow-up counts as covered.
+3. Only open leads that have an owner are checked. Breach = the deadline has strictly passed.
+4. **Escalation** (one transaction per lead): writes `sla_breached` and `escalated` activities and a `lead_escalations` row.
+   With `reassign` the engine picks another eligible employee using the normal assignment rules, **never the current
+   owner** (history: action `reassigned`, mode `automatic`, performed by = system). If nobody else is eligible the
+   escalation is recorded with outcome `no_eligible` and the owner is kept.
+5. The processor also marks late follow-ups `overdue` and writes one `follow_up_overdue` activity each.
+
+**Why running it twice never duplicates anything (idempotency)**
+- A breach is identified by the event that started the clock (the *reference*: assignment id or activity id).
+  `lead_escalations` has `UNIQUE (lead_id, reference_type, reference_id)`, so the same breach can be stored only once.
+  A new assignment or a new response is a new reference, so it opens a fresh SLA window.
+- Each lead is processed under the assignment advisory lock + the lead row lock and re-checked before acting.
+- A session advisory lock allows one processor run at a time across several app instances; an in-process flag
+  stops overlapping timer ticks.
+- Overdue marking only touches rows still `pending`.
+
+**Dashboard**
+
+| Method & path | Access | Description |
+|---------------|--------|-------------|
+| `GET /dashboard/overview` | Admin, Manager | Leads by status/source/priority, unassigned, conversion and win rate, follow-ups (pending, overdue, due today), escalations, assignment stats. Optional `from` / `to` (by creation time) |
+| `GET /dashboard/employees` | Admin, Manager | Per employee: open leads, utilisation, converted/lost, pending and overdue follow-ups, SLA breaches. Paginated |
+| `GET /dashboard/me` | Sales | Own numbers and the next 5 open follow-ups |
+
+`conversionRate` = converted / all leads; `winRate` = converted / (converted + lost). Both in percent.
+
+**Try it (SLA demo)** - the seed adds three demo policies. Create a lead, then move its history into the past and run the processor:
+```bash
+# make lead 7 look 2 hours old, then run the processor
+psql -h localhost -U crm_user crm_db -c "UPDATE assignment_history SET created_at = now() - interval '2 hours' WHERE lead_id = 7"
+curl -s -X POST "http://localhost:3000/sla/run?dryRun=true" -H "Authorization: Bearer $TOKEN"   # preview
+curl -s -X POST  http://localhost:3000/sla/run             -H "Authorization: Bearer $TOKEN"   # escalate
+curl -s http://localhost:3000/leads/7/activities           -H "Authorization: Bearer $TOKEN"   # read the story
+```
+
+**Design decisions**
+- SLA policies live in the `sla_policies` table, so thresholds and actions change without a deploy.
+- Pure logic (`sla-evaluation.ts`: policy matching, reference clock, breach test) has unit tests; the processor only does I/O.
+- The scheduler is a plain `setInterval` (no extra dependency), `unref`'d, disabled under tests; tests call `POST /sla/run` themselves.
+- `FollowUpsModule` does not import the leads or assignment modules (they import it), which avoids circular dependencies.
+- Lock order is always: assignment lock, then lead row, then follow-up row, so concurrent requests cannot deadlock.
+- Follow-up reassignment/cancellation and the activity rows are written in the same transaction as the change.
+- Known limit: the processor loads all candidate leads in one query. Fine for this scale; add batching for very large datasets.
+
 ## Security design
 
 - **Passwords** are hashed with bcrypt (10 rounds). Plain passwords are never stored or logged.
@@ -172,7 +251,7 @@ lead is still created and the response carries the assignment outcome.
 - One exception filter returns consistent JSON errors and never leaks stack traces or SQL.
 - Secrets come only from environment variables; `.env` is git-ignored.
 
-## Database schema (Day 1 + Day 3)
+## Database schema (Day 1 + Day 3 + Day 4)
 
 ```mermaid
 erDiagram
@@ -183,6 +262,10 @@ erDiagram
     leads ||--o{ assignment_history : "decisions"
     assignment_rules ||--o{ assignment_history : "applied rule"
     employees ||--o{ assignment_history : "from / to"
+    leads ||--o{ follow_ups : "scheduled"
+    employees ||--o{ follow_ups : "responsible"
+    leads ||--o{ lead_escalations : "SLA breaches"
+    sla_policies ||--o{ lead_escalations : "applied policy"
 
     users {
         int id PK
@@ -252,6 +335,46 @@ erDiagram
         jsonb metadata
         int performed_by_user_id FK "null = system"
     }
+    follow_ups {
+        int id PK
+        int lead_id FK
+        int employee_id FK "follows the lead"
+        enum type "call | meeting | email | other"
+        string title
+        timestamptz due_at
+        enum status "pending | overdue | completed | cancelled"
+        timestamptz overdue_at
+        timestamptz completed_at
+        timestamptz cancelled_at
+        text outcome_note
+    }
+    sla_policies {
+        int id PK
+        string name UK
+        int priority "1..10000, lower first"
+        bool is_active
+        enum match_priority "null = any"
+        string match_service
+        enum match_source
+        numeric min_value
+        numeric max_value
+        int response_minutes
+        enum action "flag | reassign"
+    }
+    lead_escalations {
+        int id PK
+        int lead_id FK
+        int policy_id FK
+        string policy_name "snapshot"
+        enum action "what the policy asked"
+        enum outcome "flagged | reassigned | no_eligible"
+        int from_employee_id FK
+        int to_employee_id FK
+        text reason
+        enum reference_type "assignment | activity"
+        int reference_id "UNIQUE with lead_id + reference_type"
+        timestamptz reference_at "when the SLA clock started"
+    }
 ```
 
 Design notes:
@@ -259,8 +382,9 @@ Design notes:
 - Employee **workload is not stored**; it will be counted from open assigned leads, so it can never go stale.
 - `lead_activities` is an append-only timeline/audit log.
 - Indexes on the columns used by filtering and assignment (`status`, `assigned_employee_id`, `service + location`, ...).
-- `assignment_rules` and `assignment_history` arrived with the Day 3 migration; follow-ups come on Day 4.
-- Existing databases: run `npm run migration:run` after pulling Day 3.
+- `assignment_rules` and `assignment_history` arrived with Day 3; `follow_ups`, `sla_policies` and `lead_escalations` with Day 4.
+- `lead_escalations` is append-only, and its unique key is what makes SLA processing idempotent.
+- Existing databases: run `npm run migration:run` (and `npm run seed` for the demo SLA policies) after pulling Day 4.
 
 ## Project structure
 
@@ -271,6 +395,9 @@ src/
   employees/   Employee entity (assignment inputs)
   leads/       Lead + LeadActivity entities, status rules, lead endpoints
   assignment/  rules API, selection logic (pure), engine, history
+  follow-ups/  follow-up entity, API, overdue marking, lead lifecycle hooks
+  sla/         SLA policies, pure evaluation, processor, scheduler, escalations
+  dashboard/   overview, per-employee and personal statistics (raw SQL)
   health/      /health endpoint
   common/      shared pieces (global exception filter)
   config/      environment validation
