@@ -10,6 +10,7 @@
  */
 import { EmployeeAvailability } from '../../employees/employee-availability.enum';
 import { LeadPriority, LeadSource } from '../../leads/lead.enums';
+import { SlaAction } from '../../sla/sla.enums';
 import { AssignmentStrategy, TerritoryMode } from '../../assignment/assignment.enums';
 import { Role } from '../../users/role.enum';
 
@@ -162,5 +163,36 @@ export const DEMO_RULES = [
     territoryMode: TerritoryMode.PREFERRED,
     respectWorkloadLimit: true,
     strategy: AssignmentStrategy.LEAST_WORKLOAD,
+  },
+];
+
+/** Demo SLA policies. Evaluated by ascending priority; first active matching policy applies. */
+export const DEMO_SLA_POLICIES = [
+  {
+    name: 'High priority: respond in 30 minutes, then reassign',
+    description:
+      'Hot leads must be handled fast; otherwise they move to another eligible employee.',
+    priority: 10,
+    isActive: true,
+    matchPriority: LeadPriority.HIGH,
+    responseMinutes: 30,
+    action: SlaAction.REASSIGN,
+  },
+  {
+    name: 'High value: respond in 2 hours (flag only)',
+    description: 'Big deals: managers are alerted, the owner keeps the lead.',
+    priority: 20,
+    isActive: true,
+    minValue: 100000,
+    responseMinutes: 120,
+    action: SlaAction.FLAG,
+  },
+  {
+    name: 'Default: respond within 1 day',
+    description: 'Everything else: flag after 24 hours without any response.',
+    priority: 100,
+    isActive: true,
+    responseMinutes: 1440,
+    action: SlaAction.FLAG,
   },
 ];

@@ -5,10 +5,17 @@ import { Employee } from '../../employees/employee.entity';
 import { Lead } from '../../leads/lead.entity';
 import { LeadActivity } from '../../leads/lead-activity.entity';
 import { ActivityType } from '../../leads/lead.enums';
+import { SlaPolicy } from '../../sla/sla-policy.entity';
 import { Role } from '../../users/role.enum';
 import { User } from '../../users/user.entity';
 import { BCRYPT_SALT_ROUNDS } from '../../users/users.service';
-import { DEMO_EMPLOYEES, DEMO_LEADS, DEMO_RULES, DEMO_STAFF_USERS } from './demo-data';
+import {
+  DEMO_EMPLOYEES,
+  DEMO_LEADS,
+  DEMO_RULES,
+  DEMO_SLA_POLICIES,
+  DEMO_STAFF_USERS,
+} from './demo-data';
 
 /**
  * Loads DEMO data. Safe to run many times (it skips what already exists).
@@ -63,6 +70,13 @@ async function seed() {
     for (const demo of DEMO_RULES) {
       if (!(await rules.exists({ where: { name: demo.name } }))) {
         await rules.save(rules.create(demo));
+      }
+    }
+
+    const slaPolicies = em.getRepository(SlaPolicy);
+    for (const demo of DEMO_SLA_POLICIES) {
+      if (!(await slaPolicies.exists({ where: { name: demo.name } }))) {
+        await slaPolicies.save(slaPolicies.create(demo));
       }
     }
 
