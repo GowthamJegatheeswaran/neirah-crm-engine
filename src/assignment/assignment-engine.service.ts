@@ -9,6 +9,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { Employee } from '../employees/employee.entity';
 import { EmployeeAvailability } from '../employees/employee-availability.enum';
+import { FollowUpsService } from '../follow-ups/follow-ups.service';
 import { LeadActivitiesService } from '../leads/lead-activities.service';
 import { Lead } from '../leads/lead.entity';
 import { ActivityType, LeadStatus } from '../leads/lead.enums';
@@ -47,6 +48,7 @@ export class AssignmentEngineService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly activities: LeadActivitiesService,
+    private readonly followUps: FollowUpsService,
   ) {}
 
   /** Shows who would get the lead, writing nothing. */
@@ -190,6 +192,8 @@ export class AssignmentEngineService {
         },
         performedByUserId: actor.userId,
       });
+      // Open follow-ups move to the new owner together with the lead.
+      await this.followUps.transferOpenForLead(manager, lead.id, target.id, actor.userId);
       this.logger.log(
         `Lead ${lead.id} ${action} to employee ${target.id} manually by user ${actor.userId}`,
       );

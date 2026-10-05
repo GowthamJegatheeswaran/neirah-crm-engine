@@ -8,6 +8,7 @@ import { escapeLike } from '../common/utils/escape-like';
 import { AssignmentEngineService } from '../assignment/assignment-engine.service';
 import { AssignmentHistoryService } from '../assignment/assignment-history.service';
 import { EmployeesService } from '../employees/employees.service';
+import { FollowUpsService } from '../follow-ups/follow-ups.service';
 import { PaginationQueryDto } from '../common/pagination/pagination-query.dto';
 import { AddNoteDto } from './dto/add-note.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -42,6 +43,7 @@ export class LeadsService {
     private readonly employees: EmployeesService,
     private readonly engine: AssignmentEngineService,
     private readonly assignmentHistory: AssignmentHistoryService,
+    private readonly followUps: FollowUpsService,
   ) {}
 
   async create(dto: CreateLeadDto, user: AuthenticatedUser) {
@@ -167,6 +169,15 @@ export class LeadsService {
           metadata: { from: lead.status, to: dto.status },
           performedByUserId: user.id,
         });
+        // A closed lead needs no more follow-ups.
+        if (TERMINAL_STATUSES.includes(dto.status as LeadStatus)) {
+          await this.followUps.cancelOpenForLead(
+            manager,
+            id,
+            `Lead was marked ${dto.status}`,
+            user.id,
+          );
+        }
       }
     });
     return this.findOne(id, user);
