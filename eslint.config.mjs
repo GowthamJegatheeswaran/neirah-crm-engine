@@ -34,7 +34,7 @@ export default tseslint.config(
   },
   {
     // supertest response bodies are untyped (any); asserting on them is the whole point of e2e tests
-    files: ['test/**/*.e2e-spec.ts'],
+    files: ['test/**/*.e2e-spec.ts', 'scripts/demo.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',

@@ -26,7 +26,7 @@ describe('UsersService', () => {
     repo.exists.mockResolvedValue(false);
     await service.create({ email: 'New@Neirah.test', password: 'Secret123', role: Role.SALES });
 
-    const savedArg = repo.create.mock.calls[0][0] as Partial<User>;
+    const savedArg = repo.create.mock.calls[0][0];
     expect(savedArg.passwordHash).toBeDefined();
     expect(savedArg.passwordHash).not.toBe('Secret123');
     expect(await bcrypt.compare('Secret123', savedArg.passwordHash as string)).toBe(true);
@@ -35,7 +35,7 @@ describe('UsersService', () => {
   it('normalizes the email to lower case', async () => {
     repo.exists.mockResolvedValue(false);
     await service.create({ email: ' New@Neirah.TEST ', password: 'Secret123', role: Role.SALES });
-    expect((repo.create.mock.calls[0][0] as Partial<User>).email).toBe('new@neirah.test');
+    expect(repo.create.mock.calls[0][0].email).toBe('new@neirah.test');
   });
 
   it('never returns passwordHash in the created user', async () => {

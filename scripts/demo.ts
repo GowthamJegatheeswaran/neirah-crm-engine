@@ -16,7 +16,7 @@ const BASE = process.env.BASE_URL ?? 'http://localhost:3000';
 const PASSWORD = process.env.SEED_DEFAULT_PASSWORD ?? '';
 const RUN = `Demo${Date.now().toString().slice(-6)}`;
 
-type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type Json = Record<string, any>;
 const tokens: Record<string, string> = {};
 const leadIds: number[] = [];
 const employeeIds: number[] = [];
@@ -61,7 +61,7 @@ const mkEmployee = async (name: string, service: string, extra: Json = {}) => {
     ...extra,
   });
   employeeIds.push(e.id as number);
-  return e as Json;
+  return e;
 };
 
 const mkLead = async (service: string, extra: Json = {}) => {
@@ -72,7 +72,7 @@ const mkLead = async (service: string, extra: Json = {}) => {
     ...extra,
   });
   leadIds.push(l.id as number);
-  return l as Json;
+  return l;
 };
 
 const ageLead = async (leadId: number, minutes: number) => {
